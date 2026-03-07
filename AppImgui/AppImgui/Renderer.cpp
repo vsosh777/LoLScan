@@ -44,6 +44,8 @@ extern int  g_activeTab;
 extern bool g_autoScroll;
 extern char g_clipboardBuf[4096];
 
+bool g_uiAnimating = false;
+
 void RenderLoadingScreen() {
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->WorkPos);
@@ -225,6 +227,7 @@ void RenderUI() {
             bool active = ImGui::IsItemActive();
             float target = active ? 1.2f : (hovered ? 1.0f : 0.0f);
             g_titleBtnHover[i] = AnimLerp(g_titleBtnHover[i], target, 12.0f);
+            if (fabsf(g_titleBtnHover[i] - target) > 0.01f) g_uiAnimating = true;
 
             ImVec2 bMin = ImGui::GetItemRectMin();
             ImVec2 bMax = ImGui::GetItemRectMax();
@@ -352,6 +355,7 @@ void RenderUI() {
             bool hovered = ImGui::IsItemHovered();
             float target = (isActive || hovered) ? 1.0f : 0.0f;
             g_navBtnHover[i] = AnimLerp(g_navBtnHover[i], target, 10.0f);
+            if (fabsf(g_navBtnHover[i] - target) > 0.01f) g_uiAnimating = true;
 
             if (g_navBtnHover[i] > 0.01f && !isActive) {
                 ImVec2 bMin = ImGui::GetItemRectMin();
@@ -368,6 +372,7 @@ void RenderUI() {
         // Animated active indicator
         {
             float targetY = navYPositions[g_activeTab];
+            if (fabsf(g_navIndicatorY - targetY) > 0.5f) g_uiAnimating = true;
             g_navIndicatorY = AnimLerp(g_navIndicatorY, targetY, 14.0f);
 
             static bool navInit = false;
@@ -480,6 +485,7 @@ void RenderUI() {
         g_tabFadeAlpha = 0.0f;
         g_prevTab = g_activeTab;
     }
+    if (g_tabFadeAlpha < 0.99f) g_uiAnimating = true;
     g_tabFadeAlpha = AnimLerp(g_tabFadeAlpha, 1.0f, 8.0f);
 
     // Content header

@@ -663,7 +663,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     while (running) {
         // Determine idle wait based on app state
         int toastState = GetToastState();
-        bool needsMainAnim = !g_loadingDone || (g_loadingFadeOut > 0.01f);
+        bool needsMainAnim = !g_loadingDone || (g_loadingFadeOut > 0.01f) || g_uiAnimating;
+        g_uiAnimating = false; // reset each frame; RenderUI() will set it if still active
         bool toastSliding = (toastState == 1 || toastState == 3);
         bool toastHolding = (toastState == 2);
 

@@ -22,6 +22,7 @@ static ImGuiContext* g_mainImGuiCtx = nullptr;
 static ImGuiContext* g_toastImGuiCtx = nullptr;
 static ImFont* g_toastFontBold = nullptr;
 static ImFont* g_toastFontSmall = nullptr;
+static ImFont* g_toastFontIcons = nullptr;
 
 // D3D context (set during init)
 static ID3D11Device* g_device = nullptr;
@@ -62,6 +63,17 @@ void InitToastContext(HWND toastHwnd, ID3D11Device* device, ID3D11DeviceContext*
         g_toastFontSmall = toastIO.Fonts->AddFontFromFileTTF("fonts/JetBrainsMono-Regular.ttf", 12.0f, &cfg, glyphRanges);
         if (!g_toastFontBold) g_toastFontBold = toastIO.Fonts->AddFontDefault();
         if (!g_toastFontSmall) g_toastFontSmall = g_toastFontBold;
+
+        // Icon font for close button
+        {
+            ImFontConfig iconCfg;
+            iconCfg.OversampleH = 2;
+            iconCfg.OversampleV = 2;
+            iconCfg.PixelSnapH = true;
+            static const ImWchar iconRanges[] = { 0xE001, 0xF200, 0 };
+            g_toastFontIcons = toastIO.Fonts->AddFontFromFileTTF(
+                "C:\\Windows\\Fonts\\segmdl2.ttf", 10.0f, &iconCfg, iconRanges);
+        }
     }
     ImGui_ImplWin32_Init(g_toastHwnd);
     ImGui_ImplDX11_Init(g_device, g_deviceCtx);
@@ -182,8 +194,17 @@ void RenderToastFrame() {
                    mousePos.y >= 0 && mousePos.y <= 28.0f);
     g_toastHoverX = hoverX;
     ImU32 xCol = hoverX ? IM_COL32(200, 200, 210, 220) : IM_COL32(200, 200, 210, 110);
-    dl->AddLine(ImVec2(xOff, yOff), ImVec2(xOff + 10, yOff + 10), xCol, 1.6f);
-    dl->AddLine(ImVec2(xOff + 10, yOff), ImVec2(xOff, yOff + 10), xCol, 1.6f);
+    if (g_toastFontIcons) {
+        const char* closeGlyph = "\xEE\xA2\xBB"; // U+E8BB ChromeClose
+        float fontSize = g_toastFontIcons->FontSize;
+        ImVec2 textSize = g_toastFontIcons->CalcTextSizeA(fontSize, FLT_MAX, 0, closeGlyph);
+        float tx = xOff + 5.0f - textSize.x * 0.5f;
+        float ty = yOff + 5.0f - textSize.y * 0.5f;
+        dl->AddText(g_toastFontIcons, fontSize, ImVec2(tx, ty), xCol, closeGlyph);
+    } else {
+        dl->AddLine(ImVec2(xOff, yOff), ImVec2(xOff + 10, yOff + 10), xCol, 1.6f);
+        dl->AddLine(ImVec2(xOff + 10, yOff), ImVec2(xOff, yOff + 10), xCol, 1.6f);
+    }
 
     // Handle click on X
     if (hoverX && ImGui::IsMouseClicked(ImGuiMouseButton_Left))

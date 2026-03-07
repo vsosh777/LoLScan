@@ -1,5 +1,6 @@
 #include "Widgets.h"
 #include "Colors.h"
+#include "Renderer.h"
 #include <cmath>
 
 // Animation state
@@ -40,6 +41,7 @@ bool ToggleSwitch(const char* label, bool* v) {
     int slot = (unsigned int)id % 8;
     float target = *v ? 1.0f : 0.0f;
     g_toggleAnim[slot] = AnimLerp(g_toggleAnim[slot], target, 12.0f);
+    if (fabsf(g_toggleAnim[slot] - target) > 0.01f) g_uiAnimating = true;
     float t = g_toggleAnim[slot];
 
     ImVec4 offColor = hovered ? ImVec4(0.26f, 0.28f, 0.32f, 1.0f) : (ImVec4)Colors::ToggleOff;
@@ -125,6 +127,7 @@ void EndGlassCard() {
     g_cardCount++;
     float target = hovered ? 1.0f : 0.0f;
     g_cardHover[slot] = AnimLerp(g_cardHover[slot], target, 8.0f);
+    if (fabsf(g_cardHover[slot] - target) > 0.01f) g_uiAnimating = true;
 
     if (g_cardHover[slot] > 0.01f) {
         ImDrawList* dl = ImGui::GetWindowDrawList();
