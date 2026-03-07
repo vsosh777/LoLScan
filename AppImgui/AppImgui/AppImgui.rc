@@ -1,0 +1,7 @@
+#include "resource.h"
+
+IDI_APPICON ICON "icon.ico"
+
+IDR_ICON_CHECK   RCDATA "icon_check.png"
+IDR_ICON_CROSS   RCDATA "icon_cross.png"
+IDR_ICON_WARNING RCDATA "icon_warning.png"
