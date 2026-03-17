@@ -21,6 +21,13 @@ const char* g_strings[2][S_COUNT] = {
         "Show", "Exit",
         "Clear",
         "Threat Blocked",
+        "  Settings",
+        "STARTUP",
+        "Start with Windows",
+        "Creates a Task Scheduler entry that starts LoLScan at sign-in.",
+        "Task status",
+        "Enabled",
+        "Disabled",
     },
     // Russian
     {
@@ -64,5 +71,12 @@ const char* g_strings[2][S_COUNT] = {
         u8"Выход",
         u8"Очистить",
         u8"Угроза заблокирована",
+        u8"  Настройки",
+        u8"АВТОЗАПУСК",
+        u8"Запускать с Windows",
+        u8"Создает задачу в Планировщике заданий, которая запускает LoLScan при входе в систему.",
+        u8"Статус задачи",
+        u8"Включено",
+        u8"Выключено",
     },
 };

@@ -43,6 +43,8 @@ extern bool g_rulesLoaded;
 extern int  g_activeTab;
 extern bool g_autoScroll;
 extern char g_clipboardBuf[4096];
+extern bool g_autostartElevated;
+bool SetAutostartElevated(bool enabled);
 
 bool g_uiAnimating = false;
 
@@ -325,11 +327,12 @@ void RenderUI() {
             { S_Protection,  0 },
             { S_Detections,  1 },
             { S_Logs,        2 },
+            { S_Settings,    3 },
         };
 
-        float navYPositions[3] = {};
+        float navYPositions[4] = {};
 
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 4; i++) {
             bool isActive = (g_activeTab == navItems[i].tab);
 
             ImGui::SetCursorPosX(10);
@@ -493,7 +496,7 @@ void RenderUI() {
         ImGui::Dummy(ImVec2(0, 12));
         ImGui::SetCursorPosX(24);
 
-        const char* tabTitles[] = { L(S_Protection)+2, L(S_Detections)+2, L(S_Logs)+2 };
+        const char* tabTitles[] = { L(S_Protection)+2, L(S_Detections)+2, L(S_Logs)+2, L(S_Settings)+2 };
         if (g_fontHeading) ImGui::PushFont(g_fontHeading);
         ImGui::PushStyleColor(ImGuiCol_Text, Colors::Text);
         ImGui::Text("%s", tabTitles[g_activeTab]);
@@ -768,6 +771,35 @@ void RenderUI() {
         ImGui::EndChild();
         ImGui::PopStyleVar(3);
         ImGui::PopStyleColor(2);
+
+        ImGui::EndChild();
+    }
+
+    // ====== SETTINGS TAB ======
+    else if (g_activeTab == 3) {
+        ImGui::SetCursorPosX(24);
+        ImGui::BeginChild("##SettingsContent", ImVec2(contentW - 48, contentH), false);
+
+        BeginGlassCard("##StartupCard", ImVec2(ImGui::GetContentRegionAvail().x, 0));
+        {
+            SectionHeader(L(S_Startup));
+            ImGui::Dummy(ImVec2(0, 2));
+
+            bool autostartEnabled = g_autostartElevated;
+            if (ToggleSwitch("##autostart", &autostartEnabled)) {
+                SetAutostartElevated(autostartEnabled);
+            }
+            ImGui::SameLine(0, 10);
+            {
+                float toggleH = ImGui::GetFrameHeight() * 0.80f;
+                float textH = ImGui::CalcTextSize(L(S_AutostartElevated)).y;
+                float offset = (toggleH - textH) * 0.5f;
+                ImVec2 cp = ImGui::GetCursorPos();
+                ImGui::SetCursorPosY(cp.y + offset);
+            }
+            ImGui::Text("%s", L(S_AutostartElevated));
+        }
+        EndGlassCard();
 
         ImGui::EndChild();
     }

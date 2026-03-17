@@ -29,6 +29,7 @@
 #include <thread>
 #include <mutex>
 #include <vector>
+#include <string>
 #include <cstdio>
 #include <cmath>
 
@@ -88,6 +89,8 @@ bool g_rulesLoaded = false;
 int  g_activeTab = 0;
 bool g_autoScroll = true;
 char g_clipboardBuf[4096] = {};
+bool g_autostartElevated = false;
+char g_autostartStatus[256] = "Checking Task Scheduler...";
 
 static bool g_windowDragging = false;
 static POINT g_dragStart = {};
@@ -207,6 +210,184 @@ void SaveSettings() {
     if (!f) return;
     fwrite(&s, sizeof(s), 1, f);
     fclose(f);
+}
+
+// ============================================================================
+// Autostart (Task Scheduler)
+// ============================================================================
+static const wchar_t* kAutostartTaskName = L"LoLScan Autostart";
+static const wchar_t* kLegacyAutostartTaskName = L"LoLScan Elevated Autostart";
+
+static void SetAutostartStatus(const char* msg) {
+    strncpy_s(g_autostartStatus, sizeof(g_autostartStatus), msg, _TRUNCATE);
+}
+
+static std::wstring GetSchtasksPath() {
+    wchar_t systemDir[MAX_PATH] = {};
+    UINT n = GetSystemDirectoryW(systemDir, MAX_PATH);
+    if (n > 0 && n < MAX_PATH) {
+        return std::wstring(systemDir) + L"\\schtasks.exe";
+    }
+    return L"schtasks.exe";
+}
+
+static std::wstring GetDirectoryFromPath(const std::wstring& path) {
+    size_t slash = path.find_last_of(L"\\/");
+    if (slash == std::wstring::npos) return L".";
+    return path.substr(0, slash);
+}
+
+static bool RunSchtasks(const std::wstring& args, DWORD* exitCode = nullptr) {
+    std::wstring cmd = L"\"" + GetSchtasksPath() + L"\" " + args;
+
+    STARTUPINFOW si = {};
+    PROCESS_INFORMATION pi = {};
+    si.cb = sizeof(si);
+
+    std::wstring mutableCmd = cmd;
+    BOOL ok = CreateProcessW(
+        nullptr,
+        mutableCmd.data(),
+        nullptr,
+        nullptr,
+        FALSE,
+        CREATE_NO_WINDOW,
+        nullptr,
+        nullptr,
+        &si,
+        &pi);
+    if (!ok) return false;
+
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 1;
+    GetExitCodeProcess(pi.hProcess, &code);
+
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+
+    if (exitCode) *exitCode = code;
+    return true;
+}
+
+static bool QueryTaskExists(const wchar_t* taskName, bool& exists) {
+    exists = false;
+    DWORD exitCode = 1;
+    std::wstring args = L"/Query /TN \"" + std::wstring(taskName) + L"\"";
+    if (!RunSchtasks(args, &exitCode)) return false;
+    exists = (exitCode == 0);
+    return true;
+}
+
+void RefreshAutostartElevatedState() {
+    bool existsCurrent = false;
+    bool existsLegacy = false;
+    bool currentOk = QueryTaskExists(kAutostartTaskName, existsCurrent);
+    bool legacyOk = QueryTaskExists(kLegacyAutostartTaskName, existsLegacy);
+
+    if (!currentOk && !legacyOk) {
+        g_autostartElevated = false;
+        SetAutostartStatus("Unable to query Task Scheduler.");
+        return;
+    }
+
+    g_autostartElevated = existsCurrent || existsLegacy;
+    SetAutostartStatus(g_autostartElevated ? "Enabled via Task Scheduler." : "Disabled.");
+}
+
+bool SetAutostartElevated(bool enabled) {
+    if (enabled) {
+        wchar_t exePath[MAX_PATH] = {};
+        DWORD n = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+        if (n == 0 || n >= MAX_PATH) {
+            SetAutostartStatus("Failed to resolve executable path.");
+            return false;
+        }
+
+        std::wstring exe = exePath;
+
+        std::wstring args =
+            L"/Create /F /SC ONLOGON /RL HIGHEST /IT "
+            L"/TN \"" + std::wstring(kAutostartTaskName) +
+            L"\" /TR \"\\\"" + exe + L"\\\" --autostart\"";
+
+        DWORD exitCode = 1;
+        if (!RunSchtasks(args, &exitCode) || exitCode != 0) {
+            RefreshAutostartElevatedState();
+            if (!g_autostartElevated) {
+                SetAutostartStatus("Failed to enable autostart task.");
+            }
+            AddLog("Failed to enable autostart.", LOG_ERROR);
+            return false;
+        }
+
+        // Remove legacy task name if it exists to avoid duplicates.
+        DWORD _legacyDeleteExit = 1;
+        std::wstring legacyDeleteArgs = L"/Delete /F /TN \"" + std::wstring(kLegacyAutostartTaskName) + L"\"";
+        RunSchtasks(legacyDeleteArgs, &_legacyDeleteExit);
+
+        g_autostartElevated = true;
+        SetAutostartStatus("Enabled via Task Scheduler.");
+        AddLog("Autostart enabled.", LOG_SUCCESS);
+        return true;
+    }
+
+    DWORD exitCurrent = 1;
+    DWORD exitLegacy = 1;
+    std::wstring deleteCurrent = L"/Delete /F /TN \"" + std::wstring(kAutostartTaskName) + L"\"";
+    std::wstring deleteLegacy = L"/Delete /F /TN \"" + std::wstring(kLegacyAutostartTaskName) + L"\"";
+    bool launchedCurrent = RunSchtasks(deleteCurrent, &exitCurrent);
+    bool launchedLegacy = RunSchtasks(deleteLegacy, &exitLegacy);
+
+    bool existsCurrent = false;
+    bool existsLegacy = false;
+    bool queryCurrentOk = QueryTaskExists(kAutostartTaskName, existsCurrent);
+    bool queryLegacyOk = QueryTaskExists(kLegacyAutostartTaskName, existsLegacy);
+    bool removed = (queryCurrentOk || queryLegacyOk) && !existsCurrent && !existsLegacy;
+    if (!removed) {
+        // Fallback success when one of the delete calls reported success directly.
+        bool deletedByExitCode =
+            (launchedCurrent && exitCurrent == 0) || (launchedLegacy && exitLegacy == 0);
+        removed = deletedByExitCode && !(queryCurrentOk && existsCurrent) && !(queryLegacyOk && existsLegacy);
+    }
+    if (!removed) {
+        RefreshAutostartElevatedState();
+        if (g_autostartElevated) {
+            SetAutostartStatus("Failed to disable autostart task.");
+        }
+        AddLog("Failed to disable autostart.", LOG_ERROR);
+        return false;
+    }
+
+    g_autostartElevated = false;
+    SetAutostartStatus("Disabled.");
+    AddLog("Autostart disabled.", LOG_INFO);
+    return true;
+}
+
+static bool HasLaunchArg(const wchar_t* arg) {
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argv) return false;
+
+    bool found = false;
+    for (int i = 1; i < argc; i++) {
+        if (_wcsicmp(argv[i], arg) == 0) {
+            found = true;
+            break;
+        }
+    }
+
+    LocalFree(argv);
+    return found;
+}
+
+static void SetProcessWorkingDirectoryToExeDir() {
+    wchar_t exePath[MAX_PATH] = {};
+    DWORD n = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return;
+
+    std::wstring dir = GetDirectoryFromPath(exePath);
+    SetCurrentDirectoryW(dir.c_str());
 }
 
 // Forward declarations
@@ -452,6 +633,8 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 // Entry Point
 // ============================================================================
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
+    SetProcessWorkingDirectoryToExeDir();
+
     // Single instance check
     HANDLE hMutex = CreateMutexW(nullptr, TRUE, L"Global\\LoLScanSingleInstance");
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
@@ -572,8 +755,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
         }
     }
 
-    ShowWindow(g_hwnd, SW_SHOWDEFAULT);
-    UpdateWindow(g_hwnd);
+    bool startInTray = HasLaunchArg(L"--autostart") || HasLaunchArg(L"--tray");
+    bool startMinimized = HasLaunchArg(L"--minimized");
+    if (startInTray) {
+        ShowWindow(g_hwnd, SW_HIDE);
+    } else {
+        ShowWindow(g_hwnd, startMinimized ? SW_MINIMIZE : SW_SHOWDEFAULT);
+        UpdateWindow(g_hwnd);
+    }
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -632,6 +821,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     LoadSettings(savedSettings);
     g_lang = savedSettings.lang;
     bool savedProtection = savedSettings.protectionEnabled;
+    RefreshAutostartElevatedState();
 
     // Connect to driver
     AddLog(L(S_AppLoaded), LOG_INFO);

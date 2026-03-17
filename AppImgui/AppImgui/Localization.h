@@ -18,9 +18,15 @@ enum Str {
     S_TrayShow, S_TrayExit,
     S_ClearDetections,
     S_ThreatBlocked,
+    S_Settings, S_Startup,
+    S_AutostartElevated, S_AutostartElevatedHint,
+    S_TaskStatus, S_Enabled, S_Disabled,
     S_COUNT
 };
 
 extern const char* g_strings[2][S_COUNT];
 
-inline const char* L(Str s) { return g_strings[g_lang][s]; }
+inline const char* L(Str s) {
+    const char* localized = g_strings[g_lang][s];
+    return localized ? localized : g_strings[LANG_EN][s];
+}
